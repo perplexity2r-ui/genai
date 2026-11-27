@@ -1,0 +1,23 @@
+# Датасет GenshinVision (формат Ultralytics YOLO)
+# Структура:
+#   data/
+#     images/train/*.png   images/val/*.png
+#     labels/train/*.txt   labels/val/*.txt   (YOLO: class cx cy w h, нормированные)
+
+path: ./data
+train: images/train
+val: images/val
+
+names:
+  0: player          # играбельный персонаж
+  1: enemy           # обычный противник
+  2: elite           # элитный противник
+  3: boss            # босс
+  4: enemy_hp_bar    # полоска HP над противником
+  5: player_hp_bar   # полоска HP персонажа (HUD)
+  6: stamina_bar     # полоска стамины
+  7: damage_number   # цифры урона
+  8: pickup          # подбираемые предметы
+  9: chest           # сундуки
+  10: dialogue       # диалоговые окна
+  11: minimap        # миникарта

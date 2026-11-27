@@ -1,0 +1,24 @@
+[project]
+name = "genshinvision"
+version = "0.1.0"
+description = "Real-time screen understanding for Genshin Impact: HUD reading, enemy tracking, live state streaming"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "opencv-python-headless>=4.8",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "mss>=9.0",
+]
+
+[project.optional-dependencies]
+ml = ["ultralytics>=8.2", "torch>=2.1", "onnx>=1.15", "onnxruntime>=1.17"]
+ocr = ["pytesseract>=0.3.10"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["genshinvision*"]
