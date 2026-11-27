@@ -95,6 +95,29 @@
     </div>
 
     <div class="card">
+      <h2>Миникарта</h2>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <img id="minimap-img" src="/minimap.jpg" alt="minimap"
+             style="width:110px;height:110px;border-radius:50%;border:1px solid var(--edge);background:#111">
+        <div>
+          <div class="bar-label"><span>Курс</span><span id="heading">—</span></div>
+          <div class="bar-label"><span>Скорость</span><span id="mm-speed">—</span></div>
+          <div class="bar-label"><span>Иконки</span><span id="mm-icons">—</span></div>
+        </div>
+      </div>
+      <div id="mm-icon-list" style="margin-top:8px;font-size:12px;color:var(--dim)"></div>
+    </div>
+
+    <div class="card">
+      <h2>Объекты мира</h2>
+      <table>
+        <thead><tr><th>Тип</th><th>Стихия</th><th>Дист.</th></tr></thead>
+        <tbody id="obj-rows"></tbody>
+      </table>
+      <div id="obj-empty">ничего не найдено</div>
+    </div>
+
+    <div class="card">
       <h2>Противники</h2>
       <table>
         <thead><tr><th>ID</th><th>HP</th><th>Скорость</th><th>Класс</th></tr></thead>
@@ -189,6 +212,34 @@
       </tr>`;
     }).join("");
     document.getElementById("empty").style.display = enemies.length ? "none" : "";
+
+    // объекты мира: сундуки, телепорты, кукулиусы, головоломки
+    const OBJ_LABELS = {
+      chest: "Сундук", teleport_waypoint: "Телепорт", statue_of_seven: "Статуя семи",
+      oculus: "Кукулиус", puzzle: "Головоломка", pickup: "Предмет"
+    };
+    const objRows = document.getElementById("obj-rows");
+    const objs = state.interactables || [];
+    objRows.innerHTML = objs.map(o => `<tr>
+        <td><span class="swatch" style="background:${o.class === 'chest' ? '#fbbf24' : o.class === 'teleport_waypoint' ? '#67e8f9' : o.class === 'oculus' ? '#4ade80' : '#fb923c'}"></span>${OBJ_LABELS[o.class] || o.class}</td>
+        <td>${o.element || "—"}</td>
+        <td>${o.distance_m != null ? o.distance_m.toFixed(0) + " м" : "—"}</td>
+      </tr>`).join("");
+    document.getElementById("obj-empty").style.display = objs.length ? "none" : "";
+
+    // миникарта
+    const mm = state.minimap || {};
+    document.getElementById("heading").textContent =
+      mm.heading_deg != null ? mm.heading_deg.toFixed(0) + "°" : "—";
+    document.getElementById("mm-speed").textContent =
+      mm.speed_px_s != null ? mm.speed_px_s.toFixed(0) + " px/s" : "—";
+    const icons = mm.icons || [];
+    document.getElementById("mm-icons").textContent = icons.length;
+    const ICON_LABELS = { teleport: "телепорт", statue: "статуя семи", quest: "квест", party: "группа" };
+    document.getElementById("mm-icon-list").innerHTML =
+      icons.map(i => `${ICON_LABELS[i.type] || i.type} (${i.x.toFixed(1)}, ${i.y.toFixed(1)})`).join(" · ");
+    const mmImg = document.getElementById("minimap-img");
+    if (mmImg) mmImg.src = "/minimap.jpg?t=" + Date.now();
   }
 
   function drawFrame() {

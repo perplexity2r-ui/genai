@@ -10,6 +10,7 @@ import numpy as np
 
 from .capture import ScreenSource, VideoSource  # noqa: F401  (re-export)
 from .hud import HudReader
+from .minimap import MinimapReader
 from .state import StateBuilder
 from .track import SortTracker
 from .types import GameState
@@ -19,11 +20,22 @@ _COLORS = [
     (171, 71, 188), (0, 172, 193), (255, 112, 67), (158, 157, 36),
 ]
 
+# цвета боксов объектов мира (BGR)
+_OBJ_COLORS = {
+    "chest": (0, 185, 255),           # золотой
+    "teleport_waypoint": (255, 255, 90),  # голубой
+    "statue_of_seven": (255, 200, 120),
+    "oculus": (120, 255, 120),        # зелёный
+    "puzzle": (0, 120, 255),          # оранжевый
+    "pickup": (200, 200, 200),
+}
+
 
 @dataclass
 class PipelineOutput:
     state: GameState
     frame: np.ndarray  # annotated BGR frame
+    minimap_crop: Optional[np.ndarray] = None  # круглая миникарта (BGR)
 
 
 class Pipeline:
@@ -31,10 +43,14 @@ class Pipeline:
         self.source = source
         self.detector = detector
         self.hud = hud_reader
+        self.minimap = MinimapReader(hud_reader.calib)
         self.tracker = tracker or SortTracker()
-        self.builder = StateBuilder(backend_name=getattr(detector, "name", ""))
+        self.builder = StateBuilder(
+            backend_name=getattr(detector, "name", ""), calibration=hud_reader.calib
+        )
         self._fps = 0.0
         self._last_t: Optional[float] = None
+        self._prev_entity_boxes: list = []  # зоны врагов с прошлого кадра
 
     def step(self) -> Optional[PipelineOutput]:
         got = self.source.read()
@@ -46,11 +62,19 @@ class Pipeline:
             dt = max(timestamp - self._last_t, 1e-6)
             inst = 1.0 / dt
             self._fps = inst if self._fps == 0.0 else self._fps * 0.9 + inst * 0.1
+        else:
+            dt = 1.0 / 60.0
         self._last_t = timestamp
 
         hud_reading = self.hud.read(frame)
-        detections = self.detector.detect(frame, hud=hud_reading)
+        minimap_state = self.minimap.read(frame, dt=dt)
+        detections = self.detector.detect(
+            frame, hud=hud_reading, track_zones=self._prev_entity_boxes
+        )
         tracks = self.tracker.update(detections, timestamp)
+        self._prev_entity_boxes = [
+            t.bbox for t in tracks if t.cls_name in ("enemy", "elite", "boss")
+        ]
         state = self.builder.build(
             timestamp=timestamp,
             frame_size=(frame.shape[1], frame.shape[0]),
@@ -58,9 +82,11 @@ class Pipeline:
             tracks=tracks,
             detections=detections,
             fps=self._fps,
+            minimap=minimap_state.to_dict(),
         )
         annotated = annotate(frame, state, backend=self.builder.backend_name)
-        return PipelineOutput(state=state, frame=annotated)
+        minimap_crop, _ = self.minimap._circle(annotated)
+        return PipelineOutput(state=state, frame=annotated, minimap_crop=minimap_crop)
 
     def run(self, max_frames: int = 0, on_output=None) -> int:
         """Process frames until the source is exhausted (or ``max_frames``)."""
@@ -110,6 +136,18 @@ def annotate(frame: np.ndarray, state: GameState, backend: str = "") -> np.ndarr
         label = f"#{enemy.track_id} {enemy.cls_name} hp:{hp} v:{speed:.0f}px/s"
         _label(img, label, x1, y1 - 6, color, scale)
 
+    # --- объекты мира: сундуки, телепорты, кукулиусы, головоломки ---
+    for obj in state.interactables:
+        color = _OBJ_COLORS.get(obj.cls_name, (200, 200, 200))
+        x1, y1, x2, y2 = (int(v) for v in obj.bbox)
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, th)
+        extra = ""
+        if obj.element:
+            extra += f" {obj.element}"
+        if obj.distance_m is not None:
+            extra += f" {obj.distance_m:.0f}m"
+        _label(img, f"#{obj.track_id} {obj.cls_name}{extra}", x1, y1 - 6, color, scale)
+
     # --- status panel ---
     panel = np.zeros((int(150 * scale), int(330 * scale), 3), dtype=np.uint8)
     panel[:] = (24, 24, 28)
@@ -140,7 +178,14 @@ def annotate(frame: np.ndarray, state: GameState, backend: str = "") -> np.ndarr
         _bar(panel, y0 + int(52 * scale), hud.boss_hp_frac, (60, 70, 235),
              f"BOSS {hud.boss_hp_frac * 100:.0f}%")
 
-    info = f"{state.fps:4.0f} fps | {backend or '?':9s} | enemies: {len(state.enemies)} | {'COMBAT' if state.in_combat else 'peace'}"
+    mm = state.minimap or {}
+    hdg = mm.get("heading_deg")
+    hdg_txt = "—" if hdg is None else f"{hdg:.0f}\u00b0"
+    info = (
+        f"{state.fps:4.0f} fps | {backend or '?':9s} | enemies: {len(state.enemies)} | "
+        f"objects: {len(state.interactables)} | hdg {hdg_txt} | "
+        f"{'COMBAT' if state.in_combat else 'peace'}"
+    )
     cv2.putText(panel, info, (int(12 * scale), int(128 * scale)),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.42 * scale, (200, 200, 200), 1, cv2.LINE_AA)
 

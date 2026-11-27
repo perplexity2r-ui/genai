@@ -69,9 +69,11 @@ class EnemyState:
     predicted_bbox: Optional[BBox] = None  # extrapolated into the future
     age: float = 0.0  # seconds since first seen
     hits: int = 0
+    distance_m: Optional[float] = None  # оценка расстояния до объекта, м
+    element: Optional[str] = None       # для кукулиусов: anemo/geo/electro/...
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "id": self.track_id,
             "class": self.cls_name,
             "bbox": [round(v, 1) for v in self.bbox],
@@ -85,6 +87,11 @@ class EnemyState:
             "age_s": round(self.age, 2),
             "hits": self.hits,
         }
+        if self.distance_m is not None:
+            out["distance_m"] = round(self.distance_m, 1)
+        if self.element is not None:
+            out["element"] = self.element
+        return out
 
 
 @dataclass
@@ -96,6 +103,8 @@ class GameState:
     fps: float = 0.0
     hud: HudReading = field(default_factory=HudReading)
     enemies: list[EnemyState] = field(default_factory=list)
+    interactables: list[EnemyState] = field(default_factory=list)  # сундуки/телепорты/окулиусы/головоломки
+    minimap: dict[str, Any] = field(default_factory=dict)  # курс, иконки, движение
     in_combat: bool = False
     backend: str = ""
 
@@ -111,6 +120,8 @@ class GameState:
                 "stamina_frac": self.hud.stamina_frac,
             },
             "enemies": [e.to_dict() for e in self.enemies],
+            "interactables": [i.to_dict() for i in self.interactables],
+            "minimap": self.minimap,
             "ui": {
                 "in_combat": self.in_combat,
                 "boss_hp_frac": self.hud.boss_hp_frac,

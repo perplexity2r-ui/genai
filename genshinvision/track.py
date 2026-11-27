@@ -161,9 +161,8 @@ class _Track:
         self.kf.update(det.bbox)
         self.score = det.score
         self.cls_name = det.cls_name
-        # Keep the freshest attrs (e.g. hp_frac) but don't drop stale ones
-        # outright — hp stays until a new measurement replaces it.
-        self.attrs.update(det.attrs)
+        # hp_frac «липкий» (приходит с полосок), остальные атрибуты — свежие
+        self.attrs = {**{k: v for k, v in self.attrs.items() if k == "hp_frac"}, **det.attrs}
         self.time_since_update = 0.0
         self.hits += 1
         self.last_ts = timestamp

@@ -61,7 +61,7 @@ def main(argv=None):
                 if out is None:
                     break
                 n += 1
-                hub.update(out.state.to_dict(), out.frame)
+                hub.update(out.state.to_dict(), out.frame, minimap_bgr=out.minimap_crop)
                 cv2.imshow("GenshinVision", out.frame)
                 if cv2.waitKey(max(1, int(interval * 1000))) & 0xFF == ord("q"):
                     break

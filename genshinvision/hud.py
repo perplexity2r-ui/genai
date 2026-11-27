@@ -40,6 +40,39 @@ DEFAULT_CALIBRATION: dict[str, Any] = {
     "minimap": {"cx": 0.925, "cy": 0.110, "r": 0.065},
     "combat_region": {"x": 0.150, "y": 0.130, "w": 0.700, "h": 0.620},
     "burst_ready_luma": 140.0,
+    # --- иконки на миникарте: HSV-правила (OpenCV: H 0-179, S/V 0-255) ---
+    "minimap_icons": {
+        "teleport": {"h": [95, 128], "s": [120, 255], "v": [150, 255], "min_area": 15, "max_area": 450},
+        "statue": {"h": [95, 128], "s": [35, 119], "v": [175, 255], "min_area": 15, "max_area": 450},
+        "quest": {"h": [18, 35], "s": [130, 255], "v": [150, 255], "min_area": 12, "max_area": 350},
+        "party": {"h": [0, 179], "s": [0, 50], "v": [195, 255], "min_area": 8, "max_area": 250},
+    },
+    # --- объекты мира: сундуки, телепорты, кукулиусы (подношения семи
+    #     архонтам), головоломки. Цвет + форма. Для боёв — YOLO (training/). ---
+    "object_rules": [
+        {"class": "teleport_waypoint", "h": [98, 128], "s": [110, 255], "v": [130, 255],
+         "min_area": 350, "max_area": 12000, "aspect": [0.15, 1.5], "min_fill": 0.2},
+        {"class": "oculus", "element": "anemo", "h": [35, 85], "s": [110, 255], "v": [120, 255],
+         "min_area": 250, "max_area": 3500, "aspect": [0.5, 1.8], "min_fill": 0.15},
+        {"class": "oculus", "element": "geo", "h": [15, 35], "s": [120, 255], "v": [130, 255],
+         "min_area": 250, "max_area": 3000, "aspect": [0.5, 1.8], "min_fill": 0.15},
+        {"class": "oculus", "element": "electro", "h": [138, 162], "s": [100, 255], "v": [120, 255],
+         "min_area": 250, "max_area": 3500, "aspect": [0.5, 1.8], "min_fill": 0.15},
+        {"class": "oculus", "element": "hydro", "h": [100, 120], "s": [110, 255], "v": [130, 255],
+         "min_area": 250, "max_area": 2500, "aspect": [0.5, 1.8], "min_fill": 0.15},
+        {"class": "oculus", "element": "cryo", "h": [85, 100], "s": [60, 255], "v": [150, 255],
+         "min_area": 250, "max_area": 2500, "aspect": [0.5, 1.8], "min_fill": 0.15},
+        {"class": "chest", "h": [18, 32], "s": [120, 255], "v": [70, 235],
+         "min_area": 500, "max_area": 22000, "aspect": [0.7, 2.6], "min_fill": 0.3},
+        {"class": "puzzle", "h": [4, 16], "s": [130, 255], "v": [140, 245],
+         "min_area": 350, "max_area": 8000, "aspect": [0.4, 2.2], "min_fill": 0.15},
+    ],
+    # оценка расстояния до объекта: dist_m ≈ real_size_m * focal_px / высота_бокса
+    "focal_px": 900.0,
+    "object_real_size_m": {
+        "chest": 0.7, "teleport_waypoint": 2.2, "oculus": 0.35,
+        "puzzle": 1.6, "statue_of_seven": 3.0, "enemy": 1.8, "elite": 2.0, "boss": 4.0,
+    },
 }
 
 # HSV ranges (OpenCV scale: H 0-179, S/V 0-255)
@@ -122,7 +155,7 @@ def fill_fraction(roi: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> Opti
             break
     # Полоска — равномерная заливка слева; текст/шум отбрасываем по неравномерности
     run = smooth[:end + 1]
-    if len(run) < 2 or float(run.mean()) < 0.5 or float(run.std()) > 0.28:
+    if len(run) < 2 or float(run.mean()) < 0.5 or float(run.std()) > 0.32:
         return None
     return float(min(1.0, (end + 1) / roi.shape[1]))
 

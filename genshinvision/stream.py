@@ -26,21 +26,37 @@ class Hub:
         self._lock = threading.Lock()
         self.state: dict[str, Any] = {}
         self.jpg: Optional[bytes] = None
+        self.minimap_jpg: Optional[bytes] = None
         self.clients: set[WebSocket] = set()
         self.frame_count = 0
 
-    def update(self, state: dict[str, Any], frame_bgr: np.ndarray) -> None:
+    def update(
+        self,
+        state: dict[str, Any],
+        frame_bgr: np.ndarray,
+        minimap_bgr: Optional[np.ndarray] = None,
+    ) -> None:
         ok, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 78])
         data = buf.tobytes() if ok else None
+        mm_data = None
+        if minimap_bgr is not None and minimap_bgr.size:
+            ok2, buf2 = cv2.imencode(".jpg", minimap_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            mm_data = buf2.tobytes() if ok2 else None
         with self._lock:
             self.state = state
             if data is not None:
                 self.jpg = data
+            if mm_data is not None:
+                self.minimap_jpg = mm_data
             self.frame_count += 1
 
     def snapshot(self) -> tuple[dict[str, Any], Optional[bytes]]:
         with self._lock:
             return self.state, self.jpg
+
+    def minimap_snapshot(self) -> Optional[bytes]:
+        with self._lock:
+            return self.minimap_jpg
 
 
 def create_app(hub: Hub) -> FastAPI:
@@ -57,6 +73,13 @@ def create_app(hub: Hub) -> FastAPI:
     @app.get("/frame.jpg")
     def frame():
         _, jpg = hub.snapshot()
+        if jpg is None:
+            return Response(status_code=503)
+        return Response(content=jpg, media_type="image/jpeg")
+
+    @app.get("/minimap.jpg")
+    def minimap_img():
+        jpg = hub.minimap_snapshot()
         if jpg is None:
             return Response(status_code=503)
         return Response(content=jpg, media_type="image/jpeg")
@@ -109,7 +132,7 @@ def pump(pipeline, hub: Hub, target_fps: float = 30.0, max_frames: int = 0, warm
             break
         n += 1
         if n > warmup:
-            hub.update(out.state.to_dict(), out.frame)
+            hub.update(out.state.to_dict(), out.frame, minimap_bgr=out.minimap_crop)
         if max_frames and n >= max_frames:
             break
         elapsed = time.perf_counter() - t0

@@ -87,6 +87,46 @@ def test_pipeline_end_to_end():
     ids = {e.track_id for st in states for e in st.enemies if e.cls_name == "enemy"}
     assert 2 <= len(ids) <= 5, ids
 
+    # --- объекты мира: сундуки, телепорты, кукулиусы, головоломки ---
+    last = states[-1]
+    by_class = {}
+    for o in last.interactables:
+        by_class.setdefault(o.cls_name, []).append(o)
+    assert "chest" in by_class, "сундук не найден"
+    assert "teleport_waypoint" in by_class, "телепорт не найден"
+    assert "oculus" in by_class and len(by_class["oculus"]) == 2, "ожидалось 2 кукулиуса"
+    assert "puzzle" in by_class, "головоломка не найдена"
+
+    # элементы кукулиусов различаются
+    elements = {o.element for o in by_class["oculus"]}
+    assert elements == {"anemo", "electro"}, elements
+
+    # позиции объектов близки к истинным
+    truth_objs = {t["class"]: t for t in src.last_truth["objects"] if t["class"] != "oculus"}
+    for cls in ("chest", "teleport_waypoint", "puzzle"):
+        t = truth_objs[cls]
+        tcx, tcy = (t["bbox"][0] + t["bbox"][2]) / 2, (t["bbox"][1] + t["bbox"][3]) / 2
+        best = min(
+            by_class[cls],
+            key=lambda o: ((o.bbox[0] + o.bbox[2]) / 2 - tcx) ** 2
+            + ((o.bbox[1] + o.bbox[3]) / 2 - tcy) ** 2,
+        )
+        dist = (((best.bbox[0] + best.bbox[2]) / 2 - tcx) ** 2
+                + ((best.bbox[1] + best.bbox[3]) / 2 - tcy) ** 2) ** 0.5
+        assert dist < 80, f"{cls}: центр смещён на {dist:.0f} px"
+        assert best.distance_m is not None and best.distance_m > 0
+
+    # кукулиусы: хотя бы один из двух ближе 50 м и оба стабильны
+    for o in by_class["oculus"]:
+        assert o.distance_m is not None and o.distance_m < 50
+
+    # --- миникарта: курс и движение ---
+    mm = last.minimap
+    assert mm["heading_deg"] is not None
+    v = src.player_vel
+    assert abs(mm["motion_px_s"][0] - v[0]) < 40
+    assert abs(mm["motion_px_s"][1] - v[1]) < 40
+
 
 def test_state_builder_serializable():
     builder = StateBuilder("heuristic")

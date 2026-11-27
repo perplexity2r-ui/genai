@@ -9,15 +9,22 @@ train: images/train
 val: images/val
 
 names:
-  0: player          # играбельный персонаж
-  1: enemy           # обычный противник
-  2: elite           # элитный противник
-  3: boss            # босс
-  4: enemy_hp_bar    # полоска HP над противником
-  5: player_hp_bar   # полоска HP персонажа (HUD)
-  6: stamina_bar     # полоска стамины
-  7: damage_number   # цифры урона
-  8: pickup          # подбираемые предметы
-  9: chest           # сундуки
-  10: dialogue       # диалоговые окна
-  11: minimap        # миникарта
+  0: player            # играбельный персонаж
+  1: enemy             # обычный противник
+  2: elite             # элитный противник
+  3: boss              # босс
+  4: enemy_hp_bar      # полоска HP над противником
+  5: player_hp_bar     # полоска HP персонажа (HUD)
+  6: stamina_bar       # полоска стамины
+  7: damage_number     # цифры урона
+  8: pickup            # подбираемые предметы
+  9: chest             # сундук (любого типа; при желании разделите на
+                       # chest_exquisite / chest_premium / chest_precious)
+  10: dialogue         # диалоговые окна
+  11: minimap          # миникарта
+  12: teleport_waypoint  # точка телепорта (в мире)
+  13: statue_of_seven    # статуя семи архонтов
+  14: oculus             # кукулиус (анемо/гео/электро/гидро/крио/пиро/дендро)
+                         # — подношения статуям семи архонтов
+  15: puzzle             # головоломка (монументы стихий, факелы, судьи, сейли и т.д.)
+                         # при желании разбейте на puzzle_monument / puzzle_torch / puzzle_seelie
