@@ -1,0 +1,22 @@
+name: Fetch markers
+on:
+  push:
+    paths:
+      - '.github/workflows/fetch-markers.yml'
+permissions:
+  contents: read
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download marker data
+        run: |
+          curl -fsSL -o markers_all.v5.compressed.json "https://game-data.lemonapi.com/gim/markers_all.v5.compressed.json"
+          curl -fsSL -o markerNames.json "https://genshin-impact-map.appsample.com/api/markerNames.json"
+          python3 -c "import json;m=json.load(open('markers_all.v5.compressed.json'));print('time:',m['time']);print('rows:',len(m['data']['id']))"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: markers
+          path: |
+            markers_all.v5.compressed.json
+            markerNames.json
