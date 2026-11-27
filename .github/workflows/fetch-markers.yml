@@ -3,20 +3,41 @@ on:
   push:
     paths:
       - '.github/workflows/fetch-markers.yml'
+  workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   fetch:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Download marker data
         run: |
-          curl -fsSL -o markers_all.v5.compressed.json "https://game-data.lemonapi.com/gim/markers_all.v5.compressed.json"
-          curl -fsSL -o markerNames.json "https://genshin-impact-map.appsample.com/api/markerNames.json"
-          python3 -c "import json;m=json.load(open('markers_all.v5.compressed.json'));print('time:',m['time']);print('rows:',len(m['data']['id']))"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: markers
-          path: |
-            markers_all.v5.compressed.json
-            markerNames.json
+          set +e
+          mkdir -p fetched
+          {
+            echo "=== curl markers ==="
+            curl -fsSL --max-time 120 -o fetched/markers_all.v5.compressed.json "https://game-data.lemonapi.com/gim/markers_all.v5.compressed.json"
+            echo "markers exit=$? size=$(stat -c%s fetched/markers_all.v5.compressed.json 2>/dev/null || echo 0)"
+            echo "=== curl names ==="
+            curl -fsSL --max-time 60 -o fetched/markerNames.json "https://genshin-impact-map.appsample.com/api/markerNames.json"
+            echo "names exit=$? size=$(stat -c%s fetched/markerNames.json 2>/dev/null || echo 0)"
+            echo "=== parse ==="
+            python3 - <<'PY'
+import json
+try:
+    m = json.load(open('fetched/markers_all.v5.compressed.json'))
+    print('time:', m.get('time'))
+    print('rows:', len(m['data']['id']))
+except Exception as e:
+    print('parse error:', e)
+PY
+          } > fetched/report.txt 2>&1
+          cat fetched/report.txt
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f fetched/
+          git commit -m "data: fetched marker dump" || echo "nothing to commit"
+          git push
