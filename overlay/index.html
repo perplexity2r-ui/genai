@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GenshinVision — live</title>
+<style>
+  :root {
+    --bg: #0d0f14; --panel: #161a22; --edge: #232a36;
+    --text: #e6e9ef; --dim: #8b94a4; --green: #4ade80; --red: #f87171;
+    --blue: #60a5fa; --yellow: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 18px; border-bottom: 1px solid var(--edge); background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .3px; }
+  .badge {
+    padding: 2px 10px; border-radius: 999px; font-size: 12px;
+    background: #1f2937; color: var(--dim); border: 1px solid var(--edge);
+  }
+  .badge.live { color: var(--green); border-color: #14532d; background: #052e16; }
+  .badge.combat { color: var(--red); border-color: #7f1d1d; background: #2a0b0b; }
+  main { display: flex; gap: 14px; padding: 14px 18px; flex-wrap: wrap; }
+  #stage-wrap {
+    flex: 1 1 640px; min-width: 320px; position: relative;
+    border: 1px solid var(--edge); border-radius: 10px; overflow: hidden;
+    background: #000;
+  }
+  canvas { display: block; width: 100%; height: auto; }
+  aside {
+    flex: 0 0 300px; display: flex; flex-direction: column; gap: 12px;
+    min-width: 260px;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .card h2 {
+    margin: 0 0 10px; font-size: 12px; text-transform: uppercase;
+    letter-spacing: .8px; color: var(--dim); font-weight: 600;
+  }
+  .bar-row { margin: 8px 0; }
+  .bar-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); }
+  .bar {
+    height: 10px; border-radius: 6px; background: #262c38; overflow: hidden; margin-top: 4px;
+  }
+  .bar > i { display: block; height: 100%; border-radius: 6px; transition: width .18s ease; }
+  .fill-hp { background: linear-gradient(90deg, #22c55e, #4ade80); }
+  .fill-sta { background: linear-gradient(90deg, #0ea5e9, #67e8f9); }
+  .fill-boss { background: linear-gradient(90deg, #dc2626, #f87171); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--edge); }
+  th { color: var(--dim); font-weight: 600; }
+  .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+  #empty { color: var(--dim); font-size: 12.5px; padding: 4px 0; }
+  footer {
+    padding: 8px 18px 16px; color: var(--dim); font-size: 12px;
+    display: flex; gap: 18px; flex-wrap: wrap;
+  }
+  code { background: #1c2330; padding: 1px 6px; border-radius: 4px; font-size: 11.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>GenshinVision</h1>
+  <span class="badge" id="conn">offline</span>
+  <span class="badge" id="combat">—</span>
+  <span class="badge" id="backend">—</span>
+</header>
+
+<main>
+  <div id="stage-wrap"><canvas id="stage" width="1280" height="720"></canvas></div>
+
+  <aside>
+    <div class="card">
+      <h2>Игрок</h2>
+      <div class="bar-row">
+        <div class="bar-label"><span>HP</span><span id="hp-text">—</span></div>
+        <div class="bar"><i class="fill-hp" id="hp-fill" style="width:0%"></i></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label"><span>Стамина</span><span id="sta-text">—</span></div>
+        <div class="bar"><i class="fill-sta" id="sta-fill" style="width:0%"></i></div>
+      </div>
+      <div class="bar-row" id="boss-row" style="display:none">
+        <div class="bar-label"><span>Босс</span><span id="boss-text">—</span></div>
+        <div class="bar"><i class="fill-boss" id="boss-fill" style="width:0%"></i></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Противники</h2>
+      <table>
+        <thead><tr><th>ID</th><th>HP</th><th>Скорость</th><th>Класс</th></tr></thead>
+        <tbody id="enemy-rows"></tbody>
+      </table>
+      <div id="empty">врагов не обнаружено</div>
+    </div>
+
+    <div class="card">
+      <h2>Отладка</h2>
+      <div class="bar-label"><span>FPS конвейера</span><span id="fps">—</span></div>
+      <div class="bar-label"><span>Кадр</span><span id="wh">—</span></div>
+      <div class="bar-label"><span>Состояние</span><span id="ts">—</span></div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  <span>Схема: <code>захват кадра → YOLO/эвристика → HUD → трекер (Kalman) → JSON</code></span>
+  <span>WebSocket <code>/ws</code> · кадр <code>/frame.jpg</code> · стейт <code>/state</code></span>
+</footer>
+
+<script>
+(() => {
+  const COLORS = ["#4285f4","#db4437","#f4b400","#0f9d58","#ab47bc","#00acc1","#ff7043","#9e9d24"];
+  const stage = document.getElementById("stage");
+  const ctx = stage.getContext("2d");
+  const img = new Image();
+  let state = null;
+  let ws = null;
+
+  function pct(v) { return (v == null) ? "—" : (v * 100).toFixed(v < 0.1 ? 1 : 0) + "%"; }
+
+  function connect() {
+    ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+    ws.onopen = () => {
+      document.getElementById("conn").textContent = "live";
+      document.getElementById("conn").classList.add("live");
+    };
+    ws.onmessage = (ev) => { state = JSON.parse(ev.data); renderSide(); };
+    ws.onclose = () => {
+      document.getElementById("conn").textContent = "offline";
+      document.getElementById("conn").classList.remove("live");
+      setTimeout(connect, 1500);
+    };
+    ws.onerror = () => ws.close();
+  }
+
+  // Fallback if the proxy strips websockets: poll /state.
+  setInterval(async () => {
+    if (ws && ws.readyState === WebSocket.OPEN) return;
+    try {
+      const r = await fetch("/state");
+      if (r.ok) { state = await r.json(); renderSide(); }
+    } catch (e) {}
+  }, 500);
+
+  function renderSide() {
+    if (!state) return;
+    const p = state.player || {};
+    document.getElementById("hp-fill").style.width = ((p.hp_frac || 0) * 100) + "%";
+    document.getElementById("hp-text").textContent =
+      (p.hp_cur != null && p.hp_max != null) ? `${p.hp_cur} / ${p.hp_max}` : pct(p.hp_frac);
+    document.getElementById("sta-fill").style.width = ((p.stamina_frac || 0) * 100) + "%";
+    document.getElementById("sta-text").textContent = pct(p.stamina_frac);
+
+    const boss = (state.ui || {}).boss_hp_frac;
+    const bossRow = document.getElementById("boss-row");
+    if (boss != null && boss > 0.001) {
+      bossRow.style.display = "";
+      document.getElementById("boss-fill").style.width = (boss * 100) + "%";
+      document.getElementById("boss-text").textContent = pct(boss);
+    } else bossRow.style.display = "none";
+
+    const combat = document.getElementById("combat");
+    combat.textContent = (state.ui || {}).in_combat ? "В БОЮ" : "спокойно";
+    combat.classList.toggle("combat", !!(state.ui || {}).in_combat);
+    document.getElementById("backend").textContent = state.backend || "?";
+    document.getElementById("fps").textContent = (state.fps || 0).toFixed(0);
+    document.getElementById("wh").textContent = (state.frame_size || []).join(" × ");
+    document.getElementById("ts").textContent = new Date((state.timestamp || 0) * 1000).toISOString().substr(11, 8);
+
+    const rows = document.getElementById("enemy-rows");
+    const enemies = state.enemies || [];
+    rows.innerHTML = enemies.map(e => {
+      const c = e.class === "boss" ? "#f87171" : COLORS[e.id % COLORS.length];
+      return `<tr>
+        <td><span class="swatch" style="background:${c}"></span>${e.id}</td>
+        <td>${pct(e.hp_frac)}</td>
+        <td>${(e.speed_px_s || 0).toFixed(0)} px/s</td>
+        <td>${e.class}</td>
+      </tr>`;
+    }).join("");
+    document.getElementById("empty").style.display = enemies.length ? "none" : "";
+  }
+
+  function drawFrame() {
+    if (img.complete && img.naturalWidth) {
+      stage.width = img.naturalWidth;
+      stage.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+      if (state) drawOverlay();
+    }
+    img.src = "/frame.jpg?t=" + Date.now();
+  }
+
+  function drawOverlay() {
+    const enemies = state.enemies || [];
+    const scale = stage.width / ((state.frame_size || [1280])[0] || 1280);
+    ctx.lineWidth = Math.max(1.5, 2 * scale);
+    ctx.font = `${Math.round(13 * scale)}px sans-serif`;
+    for (const e of enemies) {
+      const c = e.class === "boss" ? "#f87171" : COLORS[e.id % COLORS.length];
+      const [x1, y1, x2, y2] = e.bbox.map(v => v * scale);
+      ctx.strokeStyle = c;
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+      // velocity arrow (0.5 s prediction)
+      const vx = (e.velocity_px_s || [0, 0])[0] * scale;
+      const vy = (e.velocity_px_s || [0, 0])[1] * scale;
+      const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + vx * 0.5, cy + vy * 0.5);
+      ctx.stroke();
+      const ang = Math.atan2(vy, vx);
+      const tipX = cx + vx * 0.5, tipY = cy + vy * 0.5;
+      for (const s of [-0.4, 0.4]) {
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(tipX - 12 * scale * Math.cos(ang + s), tipY - 12 * scale * Math.sin(ang + s));
+        ctx.stroke();
+      }
+
+      // predicted ghost box
+      if (e.predicted_bbox) {
+        const [px1, py1, px2, py2] = e.predicted_bbox.map(v => v * scale);
+        ctx.setLineDash([6 * scale, 5 * scale]);
+        ctx.globalAlpha = 0.55;
+        ctx.strokeRect(px1, py1, px2 - px1, py2 - py1);
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      }
+
+      const label = `#${e.id} hp:${pct(e.hp_frac)} v:${(e.speed_px_s || 0).toFixed(0)}px/s`;
+      const ty = y1 - 7 * scale;
+      ctx.fillStyle = "rgba(12,14,20,.78)";
+      const wLbl = ctx.measureText(label).width;
+      ctx.fillRect(x1, ty - 14 * scale, wLbl + 10 * scale, 19 * scale);
+      ctx.fillStyle = c;
+      ctx.fillText(label, x1 + 5 * scale, ty);
+    }
+  }
+
+  connect();
+  setInterval(drawFrame, 90);
+  drawFrame();
+})();
+</script>
+</body>
+</html>
