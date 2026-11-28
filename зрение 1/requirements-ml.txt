@@ -1,0 +1,6 @@
+# обучение и запуск YOLO-бэкенда
+-r requirements.txt
+ultralytics>=8.2
+torch>=2.1
+onnx>=1.15
+onnxruntime>=1.17
