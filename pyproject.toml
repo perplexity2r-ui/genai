@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genshin-parkour"
+version = "0.1.0"
+description = "Локальная навигация и паркур для Genshin Impact по карте глубины (Depth Anything V2)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.24", "pillow>=9.0", "onnxruntime>=1.16"]
+
+[project.optional-dependencies]
+live = ["mss>=9.0", "pydirectinput>=1.0.4", "pyautogui>=0.9.54"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+parkour = "parkour.cli:main"
+
+[tool.setuptools]
+packages = ["parkour"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::RuntimeWarning"]
