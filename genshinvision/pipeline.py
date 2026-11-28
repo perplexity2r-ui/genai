@@ -51,6 +51,7 @@ class Pipeline:
         self._fps = 0.0
         self._last_t: Optional[float] = None
         self._prev_entity_boxes: list = []  # зоны врагов с прошлого кадра
+        self._prev_bar_enemy_boxes: list = []  # зоны врагов с полосками HP
 
     def step(self) -> Optional[PipelineOutput]:
         got = self.source.read()
@@ -69,11 +70,16 @@ class Pipeline:
         hud_reading = self.hud.read(frame)
         minimap_state = self.minimap.read(frame, dt=dt)
         detections = self.detector.detect(
-            frame, hud=hud_reading, track_zones=self._prev_entity_boxes
+            frame,
+            hud=hud_reading,
+            track_zones=self._prev_entity_boxes,
+            bar_enemy_zones=self._prev_bar_enemy_boxes,
         )
         tracks = self.tracker.update(detections, timestamp)
-        self._prev_entity_boxes = [
-            t.bbox for t in tracks if t.cls_name in ("enemy", "elite", "boss")
+        entity_tracks = [t for t in tracks if t.cls_name in ("enemy", "elite", "boss")]
+        self._prev_entity_boxes = [t.bbox for t in entity_tracks]
+        self._prev_bar_enemy_boxes = [
+            t.bbox for t in entity_tracks if t.attrs.get("hp_frac") is not None
         ]
         state = self.builder.build(
             timestamp=timestamp,
@@ -133,7 +139,16 @@ def annotate(frame: np.ndarray, state: GameState, backend: str = "") -> np.ndarr
 
         hp = "—" if enemy.hp_frac is None else f"{enemy.hp_frac * 100:.0f}%"
         speed = (vx * vx + vy * vy) ** 0.5
-        label = f"#{enemy.track_id} {enemy.cls_name} hp:{hp} v:{speed:.0f}px/s"
+        bits = [f"#{enemy.track_id}", enemy.enemy_type or enemy.cls_name]
+        if enemy.element:
+            bits.append(enemy.element)
+        if enemy.threat:
+            bits.append({"high": "УГРОЗА", "medium": "осторожно", "low": "спокоен"}[enemy.threat])
+        bits.append(f"hp:{hp}")
+        bits.append(f"v:{speed:.0f}px/s")
+        if enemy.distance_m is not None:
+            bits.append(f"{enemy.distance_m:.0f}m")
+        label = " ".join(bits)
         _label(img, label, x1, y1 - 6, color, scale)
 
     # --- объекты мира: сундуки, телепорты, кукулиусы, головоломки ---
@@ -181,13 +196,27 @@ def annotate(frame: np.ndarray, state: GameState, backend: str = "") -> np.ndarr
     mm = state.minimap or {}
     hdg = mm.get("heading_deg")
     hdg_txt = "—" if hdg is None else f"{hdg:.0f}\u00b0"
+    es = state.enemies_summary or {}
+    types = "/".join(f"{k}:{v}" for k, v in (es.get("by_type") or {}).items())
+    elems = "/".join(f"{k}:{v}" for k, v in (es.get("by_element") or {}).items())
+    e_txt = f"{es.get('total', len(state.enemies))}"
+    if types:
+        e_txt += f" [{types}]"
+    if elems:
+        e_txt += f" ({elems})"
     info = (
-        f"{state.fps:4.0f} fps | {backend or '?':9s} | enemies: {len(state.enemies)} | "
+        f"{state.fps:4.0f} fps | {backend or '?':9s} | enemies: {e_txt} | "
         f"objects: {len(state.interactables)} | hdg {hdg_txt} | "
         f"{'COMBAT' if state.in_combat else 'peace'}"
     )
-    cv2.putText(panel, info, (int(12 * scale), int(128 * scale)),
+    cv2.putText(panel, info, (int(12 * scale), int(116 * scale)),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.42 * scale, (200, 200, 200), 1, cv2.LINE_AA)
+    es_txt = (
+        f"threat: {es.get('threat_level', '-')} | aggro: {es.get('aggro_count', 0)}"
+        + (f" | nearest {es.get('nearest_m')}m" if es.get("nearest_m") is not None else "")
+    )
+    cv2.putText(panel, es_txt, (int(12 * scale), int(136 * scale)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.42 * scale, (255, 190, 120), 1, cv2.LINE_AA)
 
     img[0:panel.shape[0], 0:panel.shape[1]] = panel
     return img

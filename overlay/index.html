@@ -120,10 +120,11 @@
     <div class="card">
       <h2>Противники</h2>
       <table>
-        <thead><tr><th>ID</th><th>HP</th><th>Скорость</th><th>Класс</th></tr></thead>
+        <thead><tr><th>ID</th><th>Тип</th><th>Стихия</th><th>Угроза</th><th>HP</th><th>Дист.</th></tr></thead>
         <tbody id="enemy-rows"></tbody>
       </table>
       <div id="empty">врагов не обнаружено</div>
+      <div id="enemy-summary" style="margin-top:8px;font-size:12px;color:var(--dim)"></div>
     </div>
 
     <div class="card">
@@ -202,16 +203,31 @@
 
     const rows = document.getElementById("enemy-rows");
     const enemies = state.enemies || [];
+    const THREAT = { high: "🔴 высокая", medium: "🟡 средняя", low: "🟢 низкая" };
     rows.innerHTML = enemies.map(e => {
       const c = e.class === "boss" ? "#f87171" : COLORS[e.id % COLORS.length];
       return `<tr>
         <td><span class="swatch" style="background:${c}"></span>${e.id}</td>
+        <td>${e.enemy_type || e.class}</td>
+        <td>${e.element || "—"}</td>
+        <td>${THREAT[e.threat] || "—"}</td>
         <td>${pct(e.hp_frac)}</td>
-        <td>${(e.speed_px_s || 0).toFixed(0)} px/s</td>
-        <td>${e.class}</td>
+        <td>${e.distance_m != null ? e.distance_m.toFixed(0) + " м" : "—"}</td>
       </tr>`;
     }).join("");
     document.getElementById("empty").style.display = enemies.length ? "none" : "";
+
+    // сводка по всем врагам
+    const es = state.enemies_summary || {};
+    const tEl = document.getElementById("enemy-summary");
+    if (es.total != null) {
+      const types = Object.entries(es.by_type || {}).map(([k, v]) => `${k} ×${v}`).join(", ");
+      const elems = Object.entries(es.by_element || {}).map(([k, v]) => `${k} ×${v}`).join(", ");
+      tEl.innerHTML =
+        `<div>Всего: <b>${es.total}</b> · угроза: <b>${es.threat_level}</b>` +
+        (es.nearest_m != null ? ` · ближе всего ${es.nearest_m} м` : "") + `</div>` +
+        `<div>в аггро: ${es.aggro_count ?? 0}${types ? " · " + types : ""}${elems ? " · " + elems : ""}</div>`;
+    } else tEl.innerHTML = "";
 
     // объекты мира: сундуки, телепорты, кукулиусы, головоломки
     const OBJ_LABELS = {
@@ -231,8 +247,9 @@
     const mm = state.minimap || {};
     document.getElementById("heading").textContent =
       mm.heading_deg != null ? mm.heading_deg.toFixed(0) + "°" : "—";
+    const motion = mm.motion_px_s || null;
     document.getElementById("mm-speed").textContent =
-      mm.speed_px_s != null ? mm.speed_px_s.toFixed(0) + " px/s" : "—";
+      motion ? Math.hypot(motion[0], motion[1]).toFixed(0) + " px/s" : "—";
     const icons = mm.icons || [];
     document.getElementById("mm-icons").textContent = icons.length;
     const ICON_LABELS = { teleport: "телепорт", statue: "статуя семи", quest: "квест", party: "группа" };
@@ -290,7 +307,12 @@
         ctx.globalAlpha = 1;
       }
 
-      const label = `#${e.id} hp:${pct(e.hp_frac)} v:${(e.speed_px_s || 0).toFixed(0)}px/s`;
+      const bits = [`#${e.id}`, e.enemy_type || e.class];
+      if (e.element) bits.push(e.element);
+      if (e.threat) bits.push({ high: "УГРОЗА", medium: "осторожно", low: "спокоен" }[e.threat]);
+      bits.push(`hp:${pct(e.hp_frac)}`, `v:${(e.speed_px_s || 0).toFixed(0)}px/s`);
+      if (e.distance_m != null) bits.push(`${e.distance_m.toFixed(0)}m`);
+      const label = bits.join(" ");
       const ty = y1 - 7 * scale;
       ctx.fillStyle = "rgba(12,14,20,.78)";
       const wLbl = ctx.measureText(label).width;

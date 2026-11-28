@@ -70,7 +70,11 @@ class EnemyState:
     age: float = 0.0  # seconds since first seen
     hits: int = 0
     distance_m: Optional[float] = None  # оценка расстояния до объекта, м
-    element: Optional[str] = None       # для кукулиусов: anemo/geo/electro/...
+    element: Optional[str] = None       # стихия: anemo/geo/electro/hydro/cryo/pyro/dendro
+    enemy_type: Optional[str] = None    # тонкий тип: slime/hilichurl/ruin_guard/...
+    aggro: Optional[bool] = None        # атакует/заметил (видна полоска HP)
+    threat: Optional[str] = None        # high / medium / low
+    closing_px_s: Optional[float] = None  # скорость сближения с игроком (+ = идёт на вас)
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -91,6 +95,14 @@ class EnemyState:
             out["distance_m"] = round(self.distance_m, 1)
         if self.element is not None:
             out["element"] = self.element
+        if self.enemy_type is not None:
+            out["enemy_type"] = self.enemy_type
+        if self.aggro is not None:
+            out["aggro"] = self.aggro
+        if self.threat is not None:
+            out["threat"] = self.threat
+        if self.closing_px_s is not None:
+            out["closing_px_s"] = round(self.closing_px_s, 1)
         return out
 
 
@@ -105,6 +117,7 @@ class GameState:
     enemies: list[EnemyState] = field(default_factory=list)
     interactables: list[EnemyState] = field(default_factory=list)  # сундуки/телепорты/окулиусы/головоломки
     minimap: dict[str, Any] = field(default_factory=dict)  # курс, иконки, движение
+    enemies_summary: dict[str, Any] = field(default_factory=dict)  # сводка по всем врагам
     in_combat: bool = False
     backend: str = ""
 
@@ -120,6 +133,7 @@ class GameState:
                 "stamina_frac": self.hud.stamina_frac,
             },
             "enemies": [e.to_dict() for e in self.enemies],
+            "enemies_summary": self.enemies_summary,
             "interactables": [i.to_dict() for i in self.interactables],
             "minimap": self.minimap,
             "ui": {

@@ -67,12 +67,41 @@ DEFAULT_CALIBRATION: dict[str, Any] = {
         {"class": "puzzle", "h": [4, 16], "s": [130, 255], "v": [140, 245],
          "min_area": 350, "max_area": 8000, "aspect": [0.4, 2.2], "min_fill": 0.15},
     ],
+    # --- враги без полосок HP: слизни (стихийные тела видны всегда) ---
+    "enemy_rules": [
+        {"class": "enemy", "enemy_type": "slime", "element": "pyro", "h": [0, 14],
+         "s": [130, 255], "v": [130, 255], "min_area": 2500, "max_area": 25000,
+         "aspect": [0.7, 1.7], "min_fill": 0.35},
+        {"class": "enemy", "enemy_type": "slime", "element": "hydro", "h": [100, 120],
+         "s": [130, 255], "v": [130, 255], "min_area": 2500, "max_area": 25000,
+         "aspect": [0.7, 1.7], "min_fill": 0.35},
+        {"class": "enemy", "enemy_type": "slime", "element": "electro", "h": [138, 162],
+         "s": [130, 255], "v": [130, 255], "min_area": 2500, "max_area": 25000,
+         "aspect": [0.7, 1.7], "min_fill": 0.35},
+        {"class": "enemy", "enemy_type": "slime", "element": "anemo", "h": [35, 85],
+         "s": [130, 255], "v": [130, 255], "min_area": 2500, "max_area": 25000,
+         "aspect": [0.7, 1.7], "min_fill": 0.35},
+        {"class": "enemy", "enemy_type": "slime", "element": "cryo", "h": [85, 100],
+         "s": [60, 255], "v": [150, 255], "min_area": 2500, "max_area": 25000,
+         "aspect": [0.7, 1.7], "min_fill": 0.35},
+        {"class": "enemy", "enemy_type": "slime", "element": "geo", "h": [28, 40],
+         "s": [130, 255], "v": [130, 255], "min_area": 2500, "max_area": 25000,
+         "aspect": [0.7, 1.7], "min_fill": 0.35},
+    ],
     # оценка расстояния до объекта: dist_m ≈ real_size_m * focal_px / высота_бокса
     "focal_px": 900.0,
     "object_real_size_m": {
         "chest": 0.7, "teleport_waypoint": 2.2, "oculus": 0.35,
-        "puzzle": 1.6, "statue_of_seven": 3.0, "enemy": 1.8, "elite": 2.0, "boss": 4.0,
+        "puzzle": 1.6, "statue_of_seven": 3.0,
+        "enemy": 1.8, "elite": 2.0, "boss": 4.0,
+        "slime": 1.0, "hilichurl": 1.6, "samachurl": 1.5, "fungus": 0.8,
+        "mitachurl": 2.6, "lawachurl": 3.2, "kairagi": 2.2, "nobushi": 1.9,
+        "ruin_guard": 2.6, "ruin_machine": 2.5, "ruin_hunter": 2.4,
+        "whopperflower": 1.6, "abyss_mage": 1.9, "specter": 0.8,
+        "vishap": 2.6, "hypostasis": 3.0, "regisvine": 5.0,
     },
+    # примерное положение игрока на экране (третье лицо) — для оценки угрозы
+    "player_anchor": {"x": 0.5, "y": 0.6},
 }
 
 # HSV ranges (OpenCV scale: H 0-179, S/V 0-255)

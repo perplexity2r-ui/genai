@@ -29,6 +29,38 @@ INTERACTABLE_CLASSES = (
     "chest", "teleport_waypoint", "statue_of_seven", "oculus", "puzzle", "pickup",
 )
 
+# --------------------------------------------------------------------------- #
+# Таксономия врагов: тонкий тип -> грубый уровень (tier).
+# YOLO может учиться на тонких типах (slime, hilichurl, ruin_guard, ...), а
+# конвейер автоматически приводит их к уровням enemy / elite / boss.
+# --------------------------------------------------------------------------- #
+ENEMY_TAXONOMY: dict[str, str] = {
+    # — обычные (fodder) —
+    "slime": "enemy", "hilichurl": "enemy", "samachurl": "enemy",
+    "shaman": "enemy", "fungus": "enemy", "treasure_hoarder": "enemy",
+    "fatui_skirmisher": "enemy", "nobushi": "enemy", "hilichurl_rogue": "enemy",
+    # — элитные —
+    "mitachurl": "elite", "lawachurl": "elite", "kairagi": "elite",
+    "ruin_guard": "elite", "ruin_cruiser": "elite", "ruin_hunter": "elite",
+    "ruin_drake": "elite", "ruin_grader": "elite", "ruin_machine": "elite",
+    "whopperflower": "elite", "abyss_mage": "elite", "abyss_herald": "elite",
+    "fatui_agent": "elite", "fatui_mage": "elite", "fatui_cicin": "elite",
+    "specter": "elite", "vishap": "elite", "bathysmal_vishap": "elite",
+    "eonblight": "elite", "breacher_primus": "elite",
+    # — боссы —
+    "hypostasis": "boss", "regisvine": "boss", "overworld_boss": "boss",
+    "weekly_boss": "boss", "world_boss": "boss",
+}
+
+ENEMY_TIERS = ("enemy", "elite", "boss")
+
+
+def tier_of(name: str) -> str:
+    """Грубый уровень врага по тонкому типу (или уже готовому уровню)."""
+    if name in ENEMY_TIERS:
+        return name
+    return ENEMY_TAXONOMY.get(name, "enemy")
+
 
 def _det(cls_name: str, bbox, score: float, **attrs) -> Detection:
     return Detection(
@@ -102,6 +134,8 @@ def detect_object_rules(
             attrs: dict[str, Any] = {}
             if "element" in rule:
                 attrs["element"] = rule["element"]
+            if "enemy_type" in rule:
+                attrs["enemy_type"] = rule["enemy_type"]
             dets.append(_det(cls_name, (x, y, x + bw, y + bh), 0.6, **attrs))
     # подавление дублей между правилами: побеждает первый
     kept: list[Detection] = []
@@ -159,7 +193,7 @@ class HeuristicDetector:
             rects.append((int(cx - r - 6), int(cy - r - 6), int(cx + r + 6), int(cy + r + 6)))
         return rects
 
-    def detect(self, frame: np.ndarray, hud=None, track_zones=None) -> list[Detection]:
+    def detect(self, frame: np.ndarray, hud=None, track_zones=None, bar_enemy_zones=None) -> list[Detection]:
         dets: list[Detection] = []
         h, w = frame.shape[:2]
         hud_rects = self._hud_rects(w, h)
@@ -183,8 +217,8 @@ class HeuristicDetector:
                 continue
             if bw < 30 or bw / max(bh, 1) < 3.2:
                 continue
-            if bw > 0.16 * w:
-                continue  # слишком широкая полоска = слипшиеся две; пропускаем
+            if bw > 0.11 * w or bh > 0.028 * h:
+                continue  # слишком широкая/высокая полоска = слипшиеся две; пропускаем
             area_fill = cv2.contourArea(cnt) / float(bw * bh)
             if area_fill < 0.50:
                 continue
@@ -222,6 +256,22 @@ class HeuristicDetector:
                 dets.append(_det("boss", (x, y, x + bw, y + bh), 0.6, hp_frac=frac))
                 enemy_rects.append((x - 34, y - 34, x + bw + 34, y + bh + 34))
 
+        # --- враги без полосок HP: слизни и другие стихийные/крупные цели ---
+        # правила enemy_rules ищут цветные тела (например, слизни), которые
+        # видны даже без HUD; тела врагов с полосками уже найдены выше
+        enemy_rule_dets: list[Detection] = []
+        rules_enemy = self.calib.get("enemy_rules") or []
+        if rules_enemy:
+            zones = list(enemy_rects)
+            # зоны врагов с полосками HP (из треков): их тела не должны
+            # находиться заново как «слизень»; треки самих слизней сюда не
+            # попадают, иначе они загасят самих себя
+            for zb in (bar_enemy_zones or []):
+                pad = int(0.15 * (zb[3] - zb[1])) + 10
+                zones.append((int(zb[0]) - pad, int(zb[1]) - pad, int(zb[2]) + pad, int(zb[3]) + pad))
+            enemy_rule_dets = detect_object_rules(frame, rules_enemy, exclude_rects=hud_rects + zones)
+            dets.extend(enemy_rule_dets)
+
         # --- объекты мира: сундуки, телепорты, кукулиусы, головоломки ------
         rules = self.calib.get("object_rules") or []
         if rules:
@@ -231,6 +281,10 @@ class HeuristicDetector:
             for zb in (track_zones or []):
                 pad = int(0.15 * (zb[3] - zb[1])) + 10
                 zones.append((int(zb[0]) - pad, int(zb[1]) - pad, int(zb[2]) + pad, int(zb[3]) + pad))
+            # тела врагов без полосок (слизни) — тоже не объекты
+            for ed in enemy_rule_dets:
+                x1, y1, x2, y2 = (int(v) for v in ed.bbox)
+                zones.append((x1 - 6, y1 - 6, x2 + 6, y2 + 6))
             dets.extend(
                 detect_object_rules(frame, rules, exclude_rects=hud_rects + zones)
             )
@@ -269,7 +323,7 @@ class YoloDetector:
         self.half = half
         self.names: dict[int, str] = dict(self.model.names)
 
-    def detect(self, frame: np.ndarray, hud=None, track_zones=None) -> list[Detection]:
+    def detect(self, frame: np.ndarray, hud=None, track_zones=None, bar_enemy_zones=None) -> list[Detection]:
         results = self.model.predict(
             frame,
             conf=self.conf,
@@ -287,7 +341,15 @@ class YoloDetector:
             name = self.names.get(cls_id, CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else "object")
             x1, y1, x2, y2 = (float(v) for v in box.xyxy[0].tolist())
             score = float(box.conf.item())
-            det = _det(name, (x1, y1, x2, y2), score)
+            attrs: dict[str, Any] = {}
+            cls_name = name
+            # тонкие типы врагов (slime, hilichurl, ruin_guard, ...) -> tier
+            if name in ENEMY_TAXONOMY:
+                attrs["enemy_type"] = name
+                cls_name = tier_of(name)
+            elif name in ENEMY_TIERS:
+                cls_name = name
+            det = _det(cls_name, (x1, y1, x2, y2), score, **attrs)
             if name == "enemy_hp_bar":
                 from .hud import white_bar_fraction as wbf
 

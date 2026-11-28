@@ -49,6 +49,14 @@ python scripts/record_gameplay.py --seconds 180 --monitor 1 \
 > гидро/крио/пиро/дендро варианты. Если нужен элемент — добавьте подклассы
 > (`oculus_anemo`, `oculus_geo`, ...) в `dataset.yaml`.
 
+> **Совет по врагам**: можно ограничиться уровнями `enemy/elite/boss`, а можно
+> размечать **тонкие типы** — `slime`, `hilichurl`, `mitachurl`, `ruin_guard`,
+> `abyss_mage`, `specter`, `hypostasis`... (список в комментариях
+> `training/dataset.yaml` и в `ENEMY_TAXONOMY` → `genshinvision/detect.py`).
+> Детектор сам поднимает тонкий тип в уровень (`ruin_guard` → `elite`,
+> `hypostasis` → `boss`), а в JSON попадает `enemy_type`. Так модель различает
+> «слезень», «хиличурл» и «руинный страж», а не просто «враг».
+
 ## 3. Обучение
 
 ```bash

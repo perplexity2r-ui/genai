@@ -57,18 +57,24 @@ class SyntheticGameSource:
         self._bar_lift = 170.0 * s
 
         self.enemies: list[dict[str, Any]] = []
-        colors = [(58, 72, 210), (170, 68, 210), (60, 160, 220), (90, 60, 160)]
+        # приглушённые тона: не должны совпадать с HSV-правилами слизней/объектов
+        colors = [(85, 90, 150), (120, 105, 150), (105, 125, 155), (95, 80, 130)]
         for i in range(n_enemies):
             bar_w = 90 * s
+            # каждый враг в своей вертикальной полосе: тела не пересекаются
+            # (перекрытие врагов — случай для YOLO, эвристика его не разбирает)
+            bands = [(200 * s, 460 * s), (500 * s, 760 * s), (800 * s, 1080 * s)]
+            lo_x, hi_x = bands[i % len(bands)]
             self.enemies.append(
                 {
                     "id": i,
-                    "cx": float(self._rng.uniform(self._zone[0] + 120 * s, self._zone[2] - 120 * s)),
+                    "cx": float(self._rng.uniform(lo_x + 75 * s, hi_x - 75 * s)),
                     "cy": float(self._rng.uniform(
                         max(self._zone[1] + self._bar_lift + 10, 250 * s),
                         self._zone[3] - 140 * s)),
                     "vx": float(self._rng.uniform(-1, 1) * 130 * s),
                     "vy": float(self._rng.uniform(-1, 1) * 70 * s),
+                    "x_range": (lo_x, hi_x),
                     "hp_frac": float(self._rng.uniform(0.55, 1.0)),
                     "body_w": bar_w * 1.45,
                     "body_h": bar_w * 2.0,
@@ -79,6 +85,25 @@ class SyntheticGameSource:
             )
         self.boss_active_at = 40
         self.boss_hp_frac = 0.86
+
+        # --- слизни: враги БЕЗ полосок HP (видны по цветному телу) --------
+        # гуляют в нижней полосе зоны боя, чтобы не перекрывать гуманоидов
+        self.slimes: list[dict[str, Any]] = [
+            {
+                "id": 100, "cx": 315 * s, "cy": 538 * s,
+                "vx": 55 * s, "vy": 12 * s, "r": 35 * s,
+                "x_range": (250 * s, 385 * s),
+                "element": "pyro",
+                "color": hsv_color(8, 200, 235), "hi": hsv_color(8, 150, 255),
+            },
+            {
+                "id": 101, "cx": 735 * s, "cy": 538 * s,
+                "vx": -50 * s, "vy": -11 * s, "r": 35 * s,
+                "x_range": (675 * s, 790 * s),
+                "element": "electro",
+                "color": hsv_color(150, 190, 230), "hi": hsv_color(150, 150, 255),
+            },
+        ]
 
         # ---------------- миникарта: игрок едет по текстуре ----------------
         mm = self.calib["minimap"]
@@ -284,19 +309,18 @@ class SyntheticGameSource:
         img = self._bg.copy()
         s = self._s
 
-        # --- враги -----------------------------------------------------
+        # --- гуманоиды (враги с полосками HP) ---------------------------
         truth_enemies = []
         for e in self.enemies:
             e["cx"] += e["vx"] * dt
             e["cy"] += e["vy"] * dt
-            m = 40 * s
-            lo_x = self._zone[0] + m
-            hi_x = self._zone[2] - m
+            lo_x, hi_x = e["x_range"]
+            m = e["body_w"] / 2 + 10 * s
             lo_y = max(self._zone[1] + self._bar_lift + 10, 250 * s)
             hi_y = self._zone[3] - 140 * s
-            if e["cx"] < lo_x or e["cx"] > hi_x:
+            if e["cx"] < lo_x + m or e["cx"] > hi_x - m:
                 e["vx"] *= -1
-                e["cx"] = float(np.clip(e["cx"], lo_x, hi_x))
+                e["cx"] = float(np.clip(e["cx"], lo_x + m, hi_x - m))
             if e["cy"] < lo_y or e["cy"] > hi_y:
                 e["vy"] *= -1
                 e["cy"] = float(np.clip(e["cy"], lo_y, hi_y))
@@ -326,8 +350,37 @@ class SyntheticGameSource:
                     "bar_bbox": [bx1, by1, bx1 + bar_w, by1 + bar_h],
                     "velocity": [e["vx"], e["vy"]],
                     "hp_frac": e["hp_frac"],
+                    "enemy_type": "humanoid",
+                    "element": None,
                 }
             )
+
+        # --- слизни (враги без полосок HP, рисуются поверх) ------------
+        for sl in self.slimes:
+            sl["cx"] += sl["vx"] * dt
+            sl["cy"] += sl["vy"] * dt
+            lo_x, hi_x = sl["x_range"]
+            lo_y, hi_y = 528 * s, 548 * s  # нижняя полоса: не перекрывает гуманоидов
+            if sl["cx"] < lo_x + sl["r"] or sl["cx"] > hi_x - sl["r"]:
+                sl["vx"] *= -1
+                sl["cx"] = float(np.clip(sl["cx"], lo_x + sl["r"], hi_x - sl["r"]))
+            if sl["cy"] < lo_y or sl["cy"] > hi_y:
+                sl["vy"] *= -1
+                sl["cy"] = float(np.clip(sl["cy"], lo_y, hi_y))
+            cx, cy, r = int(sl["cx"]), int(sl["cy"]), int(sl["r"])
+            cv2.circle(img, (cx, cy), r + 2, (25, 25, 30), -1)          # обводка
+            cv2.circle(img, (cx, cy), r, sl["color"], -1)              # тело
+            cv2.ellipse(img, (cx - int(0.3 * r), cy - int(0.35 * r)),
+                        (int(0.45 * r), int(0.3 * r)), 0, 0, 360, sl["hi"], -1)  # блик
+            truth_enemies.append({
+                "id": sl["id"],
+                "bbox": [cx - r, cy - r, cx + r, cy + r],
+                "bar_bbox": None,
+                "velocity": [sl["vx"], sl["vy"]],
+                "hp_frac": None,
+                "enemy_type": "slime",
+                "element": sl["element"],
+            })
 
         # --- объекты мира ---------------------------------------------
         truth_objects = self._draw_objects(img)

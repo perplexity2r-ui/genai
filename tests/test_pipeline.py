@@ -54,12 +54,12 @@ def test_pipeline_end_to_end():
         assert st.hud.boss_hp_frac is not None
         assert abs(st.hud.boss_hp_frac - tr["boss"]["hp_frac"]) < 0.06
 
-    # --- враги: все три найдены и отслеживаются, HP и скорость верны ---
+    # --- враги: все найдены и отслеживаются (гуманоиды + слизни) ---
     dist_errs, hp_track_errs, vel_errs = [], [], []
     for st, tr in zip(states[40:], truths[40:]):
         assert st.in_combat
         tracked = [e for e in st.enemies if e.cls_name in ("enemy", "elite")]
-        assert len(tracked) >= 2, f"найдено {len(tracked)} из 3"
+        assert len(tracked) >= 4, f"найдено {len(tracked)} из 5 врагов"
         for truth in tr["enemies"]:
             tb = truth["bbox"]
             tcx, tcy = (tb[0] + tb[2]) / 2, (tb[1] + tb[3]) / 2
@@ -71,7 +71,7 @@ def test_pipeline_end_to_end():
             bcx, bcy = (best.bbox[0] + best.bbox[2]) / 2, (best.bbox[1] + best.bbox[3]) / 2
             dist = ((bcx - tcx) ** 2 + (bcy - tcy) ** 2) ** 0.5
             dist_errs.append(dist)
-            if best.hp_frac is not None:
+            if best.hp_frac is not None and truth["hp_frac"] is not None:
                 hp_track_errs.append(abs(best.hp_frac - truth["hp_frac"]))
             tvx, tvy = truth["velocity"]
             vel_errs.append(
@@ -83,9 +83,9 @@ def test_pipeline_end_to_end():
     med_vel = float(np.median(vel_errs))
     assert med_vel < 70, f"медианная ошибка скорости {med_vel:.1f} px/s"
 
-    # --- ID треков врагов стабильны (не больше 5 уникальных на 3 врагов за 100 кадров) ---
-    ids = {e.track_id for st in states for e in st.enemies if e.cls_name == "enemy"}
-    assert 2 <= len(ids) <= 5, ids
+    # --- ID треков врагов стабильны (5 врагов + небольшой запас на шум) ---
+    ids = {e.track_id for st in states for e in st.enemies if e.cls_name in ("enemy", "elite")}
+    assert 4 <= len(ids) <= 9, ids
 
     # --- объекты мира: сундуки, телепорты, кукулиусы, головоломки ---
     last = states[-1]
@@ -126,6 +126,29 @@ def test_pipeline_end_to_end():
     v = src.player_vel
     assert abs(mm["motion_px_s"][0] - v[0]) < 40
     assert abs(mm["motion_px_s"][1] - v[1]) < 40
+
+    # --- понимание всех врагов: типы, стихии, аггро, угроза, сводка ---
+    slimes = [e for e in last.enemies if e.enemy_type == "slime"]
+    humanoids = [
+        e for e in last.enemies if e.enemy_type != "slime" and e.cls_name == "enemy"
+    ]
+    assert len(slimes) == 2, f"слизни: {[(e.enemy_type, e.element) for e in last.enemies]}"
+    assert {s.element for s in slimes} == {"pyro", "electro"}
+    assert all(s.aggro is False for s in slimes), "слизни без полосок HP — не в аггро"
+    assert len(humanoids) == 3
+    assert all(h.aggro for h in humanoids), "гуманоиды с полосками HP — в аггро"
+    for e in last.enemies:
+        assert e.threat in ("high", "medium", "low")
+        assert e.closing_px_s is not None
+
+    summary = last.enemies_summary
+    assert summary["total"] == 6           # 5 врагов + босс
+    assert summary["by_tier"] == {"enemy": 5, "elite": 0, "boss": 1}
+    assert summary["by_type"]["slime"] == 2        # тонкий тип знаем для стихийных
+    assert summary["by_element"] == {"pyro": 1, "electro": 1}
+    assert summary["aggro_count"] == 4
+    assert summary["nearest_m"] is not None
+    assert summary["threat_level"] in ("high", "medium", "low")
 
 
 def test_state_builder_serializable():
