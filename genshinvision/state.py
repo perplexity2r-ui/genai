@@ -9,6 +9,17 @@ from .types import Detection, EnemyState, GameState, HudReading
 
 _ENTITY_CLASSES = ("enemy", "elite", "boss")
 
+# сигналы боту по классу объекта мира
+INTERACT_ACTIONS = {
+    "chest_unlocked": "press_f",       # подойди и нажми F
+    "chest_locked": "search_area",     # не подходи: сначала враги/головоломка рядом
+    "teleport_inactive": "press_f",    # подойди вплотную и активируй
+    "teleport_active": "ignore",       # уже открыт — не нажимать
+    "oculus": "collect",
+    "puzzle": "solve",
+    "pickup": "collect",
+}
+
 
 class StateBuilder:
     """Merges all signals into one JSON-serialisable world state."""
@@ -128,6 +139,7 @@ class StateBuilder:
                     continue
                 st = self._tracked_to_state(tr, tr.cls_name)
                 st.distance_m = self._distance_m(tr.cls_name, tr.bbox)
+                st.action = INTERACT_ACTIONS.get(tr.cls_name)
                 interactables.append(st)
 
         # чем ближе — тем раньше в списке
@@ -135,6 +147,23 @@ class StateBuilder:
         interactables.sort(key=lambda e: e.distance_m if e.distance_m is not None else 1e9)
 
         in_combat = bool(enemies) or (hud.boss_hp_frac is not None and hud.boss_hp_frac > 0.01)
+
+        # момент взаимодействия: иконка клавиши «F» (самый важный триггер бота)
+        prompt: Optional[dict[str, Any]] = None
+        for d in (detections or []):
+            if d.cls_name == "ui_interact_f":
+                if prompt is None or d.score > prompt["score"]:
+                    prompt = {"bbox": [round(v, 1) for v in d.bbox], "score": round(d.score, 3)}
+
+        # общий сигнал боту (приоритет: F-подсказка > бой > подход > исследование)
+        if prompt is not None:
+            action_hint = "stop_and_press_f"
+        elif in_combat:
+            action_hint = "fight"
+        elif any(i.action == "press_f" for i in interactables):
+            action_hint = "approach"
+        else:
+            action_hint = "explore"
 
         return GameState(
             timestamp=timestamp,
@@ -145,6 +174,8 @@ class StateBuilder:
             interactables=interactables,
             minimap=dict(minimap or {}),
             enemies_summary=self._summary(enemies),
+            ui_prompt=prompt,
+            action_hint=action_hint,
             in_combat=in_combat,
             backend=self.backend_name,
         )

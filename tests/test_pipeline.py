@@ -87,15 +87,23 @@ def test_pipeline_end_to_end():
     ids = {e.track_id for st in states for e in st.enemies if e.cls_name in ("enemy", "elite")}
     assert 4 <= len(ids) <= 9, ids
 
-    # --- объекты мира: сундуки, телепорты, кукулиусы, головоломки ---
+    # --- объекты мира: сундуки по статусу, телепорты по цвету ---
     last = states[-1]
     by_class = {}
     for o in last.interactables:
         by_class.setdefault(o.cls_name, []).append(o)
-    assert "chest" in by_class, "сундук не найден"
-    assert "teleport_waypoint" in by_class, "телепорт не найден"
+    assert "chest_unlocked" in by_class, "открытый сундук не найден"
+    assert "chest_locked" in by_class, "закрытый сундук не найден"
+    assert "teleport_active" in by_class, "активный телепорт не найден"
+    assert "teleport_inactive" in by_class, "неактивный телепорт не найден"
     assert "oculus" in by_class and len(by_class["oculus"]) == 2, "ожидалось 2 кукулиуса"
     assert "puzzle" in by_class, "головоломка не найдена"
+
+    # сигналы боту по статусам
+    assert by_class["chest_unlocked"][0].action == "press_f"
+    assert by_class["chest_locked"][0].action == "search_area"
+    assert by_class["teleport_active"][0].action == "ignore"
+    assert by_class["teleport_inactive"][0].action == "press_f"
 
     # элементы кукулиусов различаются
     elements = {o.element for o in by_class["oculus"]}
@@ -103,7 +111,7 @@ def test_pipeline_end_to_end():
 
     # позиции объектов близки к истинным
     truth_objs = {t["class"]: t for t in src.last_truth["objects"] if t["class"] != "oculus"}
-    for cls in ("chest", "teleport_waypoint", "puzzle"):
+    for cls in ("chest_unlocked", "chest_locked", "teleport_active", "teleport_inactive", "puzzle"):
         t = truth_objs[cls]
         tcx, tcy = (t["bbox"][0] + t["bbox"][2]) / 2, (t["bbox"][1] + t["bbox"][3]) / 2
         best = min(
@@ -119,6 +127,18 @@ def test_pipeline_end_to_end():
     # кукулиусы: хотя бы один из двух ближе 50 м и оба стабильны
     for o in by_class["oculus"]:
         assert o.distance_m is not None and o.distance_m < 50
+
+    # --- момент взаимодействия: иконка клавиши «F» ---
+    assert last.ui_prompt is not None, "кнопка F не найдена"
+    assert last.ui_prompt["bbox"] is not None
+    t_ui = src.last_truth["ui_prompt"]["bbox"]
+    u = last.ui_prompt["bbox"]
+    ucx, ucy = (u[0] + u[2]) / 2, (u[1] + u[3]) / 2
+    tcx, tcy = (t_ui[0] + t_ui[2]) / 2, (t_ui[1] + t_ui[3]) / 2
+    assert ((ucx - tcx) ** 2 + (ucy - tcy) ** 2) ** 0.5 < 40
+    assert last.action_hint == "stop_and_press_f"  # F-подсказка важнее боя
+    d = last.to_dict()
+    assert d["ui"]["interact_f"] is True
 
     # --- миникарта: курс и движение ---
     mm = last.minimap

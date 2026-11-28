@@ -90,9 +90,10 @@ class SyntheticGameSource:
         # гуляют в нижней полосе зоны боя, чтобы не перекрывать гуманоидов
         self.slimes: list[dict[str, Any]] = [
             {
-                "id": 100, "cx": 315 * s, "cy": 538 * s,
+                "id": 100, "cx": 155 * s, "cy": 520 * s,
                 "vx": 55 * s, "vy": 12 * s, "r": 35 * s,
-                "x_range": (250 * s, 385 * s),
+                "x_range": (105 * s, 210 * s),
+                "y_range": (505 * s, 533 * s),   # выше HP-текста игрока
                 "element": "pyro",
                 "color": hsv_color(8, 200, 235), "hi": hsv_color(8, 150, 255),
             },
@@ -100,6 +101,7 @@ class SyntheticGameSource:
                 "id": 101, "cx": 735 * s, "cy": 538 * s,
                 "vx": -50 * s, "vy": -11 * s, "r": 35 * s,
                 "x_range": (675 * s, 790 * s),
+                "y_range": (528 * s, 548 * s),
                 "element": "electro",
                 "color": hsv_color(150, 190, 230), "hi": hsv_color(150, 150, 255),
             },
@@ -122,12 +124,16 @@ class SyntheticGameSource:
 
         # ---------------- объекты мира (координаты кадра) ----------------
         self.objects = [
-            {"class": "chest", "element": None, "x": 420 * s, "y": 560 * s, "w": 110 * s, "h": 80 * s},
-            {"class": "teleport_waypoint", "element": None, "x": 1120 * s, "y": 380 * s, "w": 44 * s, "h": 130 * s},
+            {"class": "chest_unlocked", "element": None, "x": 420 * s, "y": 560 * s, "w": 110 * s, "h": 80 * s},
+            {"class": "chest_locked", "element": None, "x": 245 * s, "y": 575 * s, "w": 110 * s, "h": 80 * s},
+            {"class": "teleport_active", "element": None, "x": 1120 * s, "y": 380 * s, "w": 44 * s, "h": 130 * s},
+            {"class": "teleport_inactive", "element": None, "x": 875 * s, "y": 520 * s, "w": 44 * s, "h": 130 * s},
             {"class": "oculus", "element": "anemo", "x": 620 * s, "y": 575 * s, "w": 48 * s, "h": 48 * s},
             {"class": "oculus", "element": "electro", "x": 800 * s, "y": 570 * s, "w": 48 * s, "h": 48 * s},
             {"class": "puzzle", "element": "monument", "x": 945 * s, "y": 530 * s, "w": 60 * s, "h": 110 * s},
         ]
+        # иконка клавиши «F» с текстом-подсказкой (момент взаимодействия)
+        self.ui_prompt = {"x": 655 * s, "y": 645 * s, "w": 50 * s, "h": 50 * s, "label": "Сундук"}
 
         self._bg = self._make_background()
         self.last_truth: dict[str, Any] = {}
@@ -258,7 +264,12 @@ class SyntheticGameSource:
         truth = []
         for obj in self.objects:
             x, y, w, h = obj["x"], obj["y"], obj["w"], obj["h"]
-            if obj["class"] == "chest":
+            if obj["class"] in ("chest_unlocked", "chest_locked"):
+                if obj["class"] == "chest_locked":
+                    # красное энергетическое кольцо — «сундук заблокирован»
+                    ring = hsv_color(0, 205, 235)
+                    cv2.circle(img, (int(x + w / 2), int(y + h / 2)), int(w * 0.62),
+                               ring, max(2, int(w * 0.11)))
                 gold = hsv_color(24, 210, 230)
                 gold_dark = hsv_color(24, 210, 190)
                 cv2.rectangle(img, (int(x), int(y + 0.35 * h)), (int(x + w), int(y + h)), gold_dark, -1)
@@ -266,9 +277,13 @@ class SyntheticGameSource:
                 cv2.rectangle(img, (int(x), int(y)), (int(x + w), int(y + h)), (40, 40, 45), 2)
                 cv2.rectangle(img, (int(x + 0.42 * w), int(y + 0.3 * h)),
                               (int(x + 0.58 * w), int(y + 0.55 * h)), (50, 50, 55), -1)
-            elif obj["class"] == "teleport_waypoint":
-                cy_p = hsv_color(110, 200, 255)
-                cy_dim = hsv_color(110, 170, 235)
+            elif obj["class"] in ("teleport_active", "teleport_inactive"):
+                if obj["class"] == "teleport_active":
+                    cy_p = hsv_color(110, 200, 255)   # голубой — уже открыт
+                    cy_dim = hsv_color(110, 170, 235)
+                else:
+                    cy_p = hsv_color(0, 205, 250)     # красный — неактивен, жми F
+                    cy_dim = hsv_color(0, 175, 230)
                 cv2.ellipse(img, (int(x + w / 2), int(y + h)), (int(w * 1.1), int(0.32 * w)),
                             0, 0, 360, cy_dim, -1)                      # основание-кольцо
                 cv2.rectangle(img, (int(x), int(y + 0.12 * h)), (int(x + w), int(y + h)), cy_p, -1)
@@ -298,6 +313,19 @@ class SyntheticGameSource:
                 "bbox": [x, y, x + w, y + h],
             })
         return truth
+
+    def _draw_ui_prompt(self, img: np.ndarray) -> dict[str, Any]:
+        """Иконка клавиши «F» + текст-подсказка (момент взаимодействия)."""
+        s = self._s
+        p = self.ui_prompt
+        x, y, w, h = int(p["x"]), int(p["y"]), int(p["w"]), int(p["h"])
+        cv2.rectangle(img, (x - 2, y - 2), (x + w + 2, y + h + 2), (90, 92, 96), -1)  # рамка
+        cv2.rectangle(img, (x, y), (x + w, y + h), (240, 242, 245), -1)              # кнопка
+        cv2.putText(img, "F", (x + 13, y + int(0.78 * h)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.2 * s, (20, 20, 25), max(2, int(2 * s)))
+        cv2.putText(img, p["label"], (x + w + 8, y + int(0.62 * h)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.75 * s, (235, 240, 245), max(1, int(2 * s)))
+        return {"bbox": [x, y, x + w, y + h], "label": p["label"]}
 
     # ------------------------------------------------------------------ step
     def read(self) -> Optional[tuple[float, np.ndarray]]:
@@ -360,7 +388,7 @@ class SyntheticGameSource:
             sl["cx"] += sl["vx"] * dt
             sl["cy"] += sl["vy"] * dt
             lo_x, hi_x = sl["x_range"]
-            lo_y, hi_y = 528 * s, 548 * s  # нижняя полоса: не перекрывает гуманоидов
+            lo_y, hi_y = sl["y_range"]  # нижняя полоса: не перекрывает гуманоидов
             if sl["cx"] < lo_x + sl["r"] or sl["cx"] > hi_x - sl["r"]:
                 sl["vx"] *= -1
                 sl["cx"] = float(np.clip(sl["cx"], lo_x + sl["r"], hi_x - sl["r"]))
@@ -384,6 +412,9 @@ class SyntheticGameSource:
 
         # --- объекты мира ---------------------------------------------
         truth_objects = self._draw_objects(img)
+
+        # --- иконка клавиши «F» (момент взаимодействия) ----------------
+        ui_prompt_truth = self._draw_ui_prompt(img)
 
         # --- босс ------------------------------------------------------
         boss_truth = None
@@ -444,6 +475,7 @@ class SyntheticGameSource:
             "player_hp_cur": cur,
             "enemies": truth_enemies,
             "objects": truth_objects,
+            "ui_prompt": ui_prompt_truth,
             "boss": boss_truth,
             "minimap": minimap_truth,
         }

@@ -50,8 +50,14 @@ DEFAULT_CALIBRATION: dict[str, Any] = {
     # --- объекты мира: сундуки, телепорты, кукулиусы (подношения семи
     #     архонтам), головоломки. Цвет + форма. Для боёв — YOLO (training/). ---
     "object_rules": [
-        {"class": "teleport_waypoint", "h": [98, 128], "s": [110, 255], "v": [130, 255],
+        {"class": "teleport_active", "h": [98, 128], "s": [110, 255], "v": [130, 255],
          "min_area": 350, "max_area": 12000, "aspect": [0.15, 1.5], "min_fill": 0.2},
+        # неактивный телепорт/статуя светится красным («подойди и нажми F»);
+        # диапазон [0, 6] не захватывает оранжевый (головоломки, сундуки)
+        {"class": "teleport_inactive", "h": [0, 6], "s": [130, 255], "v": [120, 255],
+         "min_area": 800, "max_area": 12000, "aspect": [0.15, 1.5], "min_fill": 0.35},
+        {"class": "teleport_inactive", "h": [170, 179], "s": [130, 255], "v": [120, 255],
+         "min_area": 800, "max_area": 12000, "aspect": [0.15, 1.5], "min_fill": 0.35},
         {"class": "oculus", "element": "anemo", "h": [35, 85], "s": [110, 255], "v": [120, 255],
          "min_area": 250, "max_area": 3500, "aspect": [0.5, 1.8], "min_fill": 0.15},
         {"class": "oculus", "element": "geo", "h": [15, 35], "s": [120, 255], "v": [130, 255],
@@ -62,7 +68,9 @@ DEFAULT_CALIBRATION: dict[str, Any] = {
          "min_area": 250, "max_area": 2500, "aspect": [0.5, 1.8], "min_fill": 0.15},
         {"class": "oculus", "element": "cryo", "h": [85, 100], "s": [60, 255], "v": [150, 255],
          "min_area": 250, "max_area": 2500, "aspect": [0.5, 1.8], "min_fill": 0.15},
-        {"class": "chest", "h": [18, 32], "s": [120, 255], "v": [70, 235],
+        # сундук: открытый (без кольца) / заблокированный (красное кольцо) —
+        # статус уточняется в classify_chest_status() по кольцу вокруг бокса
+        {"class": "chest_unlocked", "h": [18, 32], "s": [120, 255], "v": [70, 235],
          "min_area": 500, "max_area": 22000, "aspect": [0.7, 2.6], "min_fill": 0.3},
         {"class": "puzzle", "h": [4, 16], "s": [130, 255], "v": [140, 245],
          "min_area": 350, "max_area": 8000, "aspect": [0.4, 2.2], "min_fill": 0.15},
@@ -91,8 +99,9 @@ DEFAULT_CALIBRATION: dict[str, Any] = {
     # оценка расстояния до объекта: dist_m ≈ real_size_m * focal_px / высота_бокса
     "focal_px": 900.0,
     "object_real_size_m": {
-        "chest": 0.7, "teleport_waypoint": 2.2, "oculus": 0.35,
-        "puzzle": 1.6, "statue_of_seven": 3.0,
+        "chest_unlocked": 0.7, "chest_locked": 0.7,
+        "teleport_active": 2.2, "teleport_inactive": 2.2,
+        "oculus": 0.35, "puzzle": 1.6,
         "enemy": 1.8, "elite": 2.0, "boss": 4.0,
         "slime": 1.0, "hilichurl": 1.6, "samachurl": 1.5, "fungus": 0.8,
         "mitachurl": 2.6, "lawachurl": 3.2, "kairagi": 2.2, "nobushi": 1.9,
@@ -102,6 +111,8 @@ DEFAULT_CALIBRATION: dict[str, Any] = {
     },
     # примерное положение игрока на экране (третье лицо) — для оценки угрозы
     "player_anchor": {"x": 0.5, "y": 0.6},
+    # зона поиска иконки клавиши «F» (справа от персонажа, у нижнего края)
+    "ui_interact_region": {"x": [0.42, 0.98], "y": [0.28, 0.98]},
 }
 
 # HSV ranges (OpenCV scale: H 0-179, S/V 0-255)

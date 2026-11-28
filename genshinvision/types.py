@@ -75,6 +75,7 @@ class EnemyState:
     aggro: Optional[bool] = None        # атакует/заметил (видна полоска HP)
     threat: Optional[str] = None        # high / medium / low
     closing_px_s: Optional[float] = None  # скорость сближения с игроком (+ = идёт на вас)
+    action: Optional[str] = None        # сигнал боту: press_f / ignore / search_area / collect / solve
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -103,6 +104,8 @@ class EnemyState:
             out["threat"] = self.threat
         if self.closing_px_s is not None:
             out["closing_px_s"] = round(self.closing_px_s, 1)
+        if self.action is not None:
+            out["action"] = self.action
         return out
 
 
@@ -118,6 +121,8 @@ class GameState:
     interactables: list[EnemyState] = field(default_factory=list)  # сундуки/телепорты/окулиусы/головоломки
     minimap: dict[str, Any] = field(default_factory=dict)  # курс, иконки, движение
     enemies_summary: dict[str, Any] = field(default_factory=dict)  # сводка по всем врагам
+    ui_prompt: Optional[dict[str, Any]] = None  # иконка клавиши «F»: {bbox, score}
+    action_hint: str = "explore"  # общий сигнал боту (см. StateBuilder)
     in_combat: bool = False
     backend: str = ""
 
@@ -141,6 +146,10 @@ class GameState:
                 "boss_hp_frac": self.hud.boss_hp_frac,
                 "party_hp_fracs": self.hud.party_hp_fracs,
                 "burst_ready": self.hud.burst_ready,
+                # момент разрешённого взаимодействия: «остановиться и нажать F»
+                "interact_f": self.ui_prompt is not None,
+                "interact_bbox": None if self.ui_prompt is None else self.ui_prompt.get("bbox"),
             },
+            "action_hint": self.action_hint,
             "backend": self.backend,
         }

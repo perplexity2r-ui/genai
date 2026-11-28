@@ -111,7 +111,7 @@
     <div class="card">
       <h2>Объекты мира</h2>
       <table>
-        <thead><tr><th>Тип</th><th>Стихия</th><th>Дист.</th></tr></thead>
+        <thead><tr><th>Тип</th><th>Стихия</th><th>Дист.</th><th>Сигнал</th></tr></thead>
         <tbody id="obj-rows"></tbody>
       </table>
       <div id="obj-empty">ничего не найдено</div>
@@ -132,6 +132,8 @@
       <div class="bar-label"><span>FPS конвейера</span><span id="fps">—</span></div>
       <div class="bar-label"><span>Кадр</span><span id="wh">—</span></div>
       <div class="bar-label"><span>Состояние</span><span id="ts">—</span></div>
+      <div class="bar-label"><span>Сигнал боту</span><span id="hint">—</span></div>
+      <div class="bar-label"><span>Кнопка F</span><span id="f-key">—</span></div>
     </div>
   </aside>
 </main>
@@ -200,6 +202,14 @@
     document.getElementById("fps").textContent = (state.fps || 0).toFixed(0);
     document.getElementById("wh").textContent = (state.frame_size || []).join(" × ");
     document.getElementById("ts").textContent = new Date((state.timestamp || 0) * 1000).toISOString().substr(11, 8);
+    const HINTS = {
+      stop_and_press_f: "🟢 ОСТАНОВИТЬСЯ И НАЖАТЬ F", fight: "⚔️ БОЙ",
+      approach: "подойти", explore: "исследовать"
+    };
+    document.getElementById("hint").textContent = HINTS[state.action_hint] || state.action_hint || "—";
+    const fKey = document.getElementById("f-key");
+    fKey.textContent = (state.ui || {}).interact_f ? "НАЖМИ F!" : "нет";
+    fKey.style.color = (state.ui || {}).interact_f ? "var(--green)" : "";
 
     const rows = document.getElementById("enemy-rows");
     const enemies = state.enemies || [];
@@ -229,17 +239,29 @@
         `<div>в аггро: ${es.aggro_count ?? 0}${types ? " · " + types : ""}${elems ? " · " + elems : ""}</div>`;
     } else tEl.innerHTML = "";
 
-    // объекты мира: сундуки, телепорты, кукулиусы, головоломки
+    // объекты мира: сундуки по статусу, телепорты по цвету, кукулиусы, головоломки
     const OBJ_LABELS = {
-      chest: "Сундук", teleport_waypoint: "Телепорт", statue_of_seven: "Статуя семи",
-      oculus: "Кукулиус", puzzle: "Головоломка", pickup: "Предмет"
+      chest_unlocked: "Сундук (открыт)", chest_locked: "Сундук (закрыт)",
+      teleport_active: "Телепорт (открыт)", teleport_inactive: "Телепорт (закрыт)",
+      statue_of_seven: "Статуя семи", oculus: "Кукулиус",
+      puzzle: "Головоломка", pickup: "Предмет"
+    };
+    const SWATCH = {
+      chest_unlocked: "#fbbf24", chest_locked: "#ef4444",
+      teleport_active: "#67e8f9", teleport_inactive: "#f87171",
+      oculus: "#4ade80", puzzle: "#fb923c", pickup: "#a78bfa"
+    };
+    const ACTION_LABELS = {
+      press_f: "🟢 подойти и нажать F", ignore: "⚪️ игнорировать",
+      search_area: "🔴 сначала враги/головоломка", collect: "подобрать", solve: "решить"
     };
     const objRows = document.getElementById("obj-rows");
     const objs = state.interactables || [];
     objRows.innerHTML = objs.map(o => `<tr>
-        <td><span class="swatch" style="background:${o.class === 'chest' ? '#fbbf24' : o.class === 'teleport_waypoint' ? '#67e8f9' : o.class === 'oculus' ? '#4ade80' : '#fb923c'}"></span>${OBJ_LABELS[o.class] || o.class}</td>
+        <td><span class="swatch" style="background:${SWATCH[o.class] || "#a78bfa"}"></span>${OBJ_LABELS[o.class] || o.class}</td>
         <td>${o.element || "—"}</td>
         <td>${o.distance_m != null ? o.distance_m.toFixed(0) + " м" : "—"}</td>
+        <td>${ACTION_LABELS[o.action] || o.action || "—"}</td>
       </tr>`).join("");
     document.getElementById("obj-empty").style.display = objs.length ? "none" : "";
 
